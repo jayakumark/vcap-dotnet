@@ -3,6 +3,16 @@ Uhuru Software .Net Extensions to Cloud Foundry
 
 Copyright (c) 2011 Uhuru Software, Inc., All Rights Reserved
 
+## Code Status
+### Current Build (Unit Tests)
+
+[![Build Status](http://uhurusoftware.com/build_status/status-vcap.png)](http://uhurusoftware.com/build_status/vcap-dotnet.htm)
+
+### Last Nightly Build (Integration and System Tests)
+
+[![Build Status](http://uhurusoftware.com/build_status/status-vcap-nb.png)](http://uhurusoftware.com/build_status/vcap-dotnet-nb.htm)
+
+
 What are the .NET Extensions to Cloud Foundry?
 ----------------------------------------------
 
