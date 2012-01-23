@@ -279,18 +279,20 @@ namespace Uhuru.CloudFoundry.DEA.Plugins
                         }
                     }
 
-                    bool retry = true;
-                    while (retry)
+                    int retryCount = 20;
+                    while (retryCount > 0)
                     {
                         try
                         {
                             serverMgr.Sites[currentSite.Name].Stop();
-                            retry = false;
+                            break;
                         }
                         catch (System.Runtime.InteropServices.COMException)
                         {
                             // todo log exception
                         }
+
+                        retryCount--;
                     }
 
                     int time = 0;
@@ -512,7 +514,7 @@ namespace Uhuru.CloudFoundry.DEA.Plugins
         private CpuTarget GetCpuTarget(ApplicationInfo appInfo)
         {
             this.startupLogger.Info(Strings.DetectingCpuTarget);
-            
+
             string[] allAssemblies = Directory.GetFiles(appInfo.Path, "*.dll", SearchOption.AllDirectories);
 
             CpuTarget target = CpuTarget.X64;

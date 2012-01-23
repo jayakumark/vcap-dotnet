@@ -558,6 +558,15 @@ namespace Uhuru.CloudFoundry.DEA {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The {0} instance process could not be added to the instance job object: {1}.
+        /// </summary>
+        internal static string InstanceProcessCoudNotBeAdded {
+            get {
+                return ResourceManager.GetString("InstanceProcessCoudNotBeAdded", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Lowering instance process priority to: {0}.
         /// </summary>
         internal static string LoggerLoweringPriority {
@@ -599,6 +608,15 @@ namespace Uhuru.CloudFoundry.DEA {
         internal static string MemoryLimitOfExceeded {
             get {
                 return ResourceManager.GetString("MemoryLimitOfExceeded", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &quot;Monitor App Exception: {0}&quot;.
+        /// </summary>
+        internal static string MonitorException {
+            get {
+                return ResourceManager.GetString("MonitorException", resourceCulture);
             }
         }
         
