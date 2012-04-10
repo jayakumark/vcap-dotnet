@@ -19,7 +19,12 @@ namespace Uhuru.Configuration.Service
         /// Node ID configuration property.
         /// </summary>
         private static ConfigurationProperty propertyNodeId;
-       
+
+        /// <summary>
+        /// Node service plan.
+        /// </summary>
+        private static ConfigurationProperty propertyPlan;
+
         /// <summary>
         /// Migration NFS configuration property.
         /// </summary>
@@ -34,7 +39,12 @@ namespace Uhuru.Configuration.Service
         /// Index configuration property.
         /// </summary>
         private static ConfigurationProperty propertyIndex;
-      
+
+        /// <summary>
+        /// Status port configuration property.
+        /// </summary>
+        private static ConfigurationProperty propertyStatusPort;
+
         /// <summary>
         /// Z-Interval configuration property.
         /// </summary>
@@ -101,6 +111,11 @@ namespace Uhuru.Configuration.Service
                 null,
                 ConfigurationPropertyOptions.IsRequired);
 
+            propertyPlan = new ConfigurationProperty(
+                "plan",
+                typeof(string),
+                "free");
+
             propertyMigrationNfs = new ConfigurationProperty(
                 "migrationNfs",
                 typeof(string),
@@ -119,6 +134,11 @@ namespace Uhuru.Configuration.Service
                 0,
                 ConfigurationPropertyOptions.IsRequired);
 
+            propertyStatusPort = new ConfigurationProperty(
+                "statusPort",
+                typeof(int),
+                0);
+
             propertyZInterval = new ConfigurationProperty(
                 "zInterval",
                 typeof(int),
@@ -127,8 +147,8 @@ namespace Uhuru.Configuration.Service
 
             propertyMaxDbSize = new ConfigurationProperty(
                 "maxDbSize",
-                typeof(int),
-                20,
+                typeof(long),
+                20L,
                 ConfigurationPropertyOptions.IsRequired);
 
             propertyMaxLongQuery = new ConfigurationProperty(
@@ -163,8 +183,8 @@ namespace Uhuru.Configuration.Service
 
             propertyAvailableStorage = new ConfigurationProperty(
                 "availableStorage",
-                typeof(int),
-                1024,
+                typeof(long),
+                1024L,
                 ConfigurationPropertyOptions.IsRequired);
 
             propertyMsSql = new ConfigurationProperty(
@@ -176,9 +196,11 @@ namespace Uhuru.Configuration.Service
             properties = new ConfigurationPropertyCollection();
 
             properties.Add(propertyNodeId);
+            properties.Add(propertyPlan);
             properties.Add(propertyMigrationNfs);
             properties.Add(propertyMBus);
             properties.Add(propertyIndex);
+            properties.Add(propertyStatusPort);
             properties.Add(propertyZInterval);
             properties.Add(propertyMaxDbSize);
             properties.Add(propertyMaxLongQuery);
@@ -208,6 +230,23 @@ namespace Uhuru.Configuration.Service
             set
             {
                 base[propertyNodeId] = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the plan for the service.
+        /// </summary>
+        [ConfigurationProperty("plan", IsRequired = false)]
+        public string Plan
+        {
+            get
+            {
+                return (string)base[propertyPlan];
+            }
+
+            set
+            {
+                base[propertyPlan] = value;
             }
         }
 
@@ -263,6 +302,23 @@ namespace Uhuru.Configuration.Service
         }
 
         /// <summary>
+        /// Gets or sets the status port for /health and /varz
+        /// </summary>
+        [ConfigurationProperty("statusPort", IsRequired = false, DefaultValue = 0)]
+        public int StatusPort
+        {
+            get
+            {
+                return (int)base[propertyStatusPort];
+            }
+
+            set
+            {
+                base[propertyStatusPort] = value;
+            }
+        }
+
+        /// <summary>
         /// Gets or sets the interval at which to update the Healthz and Varz
         /// </summary>
         [ConfigurationProperty("zInterval", IsRequired = true, DefaultValue = 30000)]
@@ -282,12 +338,12 @@ namespace Uhuru.Configuration.Service
         /// <summary>
         /// Gets or sets the maximum database size.
         /// </summary>
-        [ConfigurationProperty("maxDbSize", IsRequired = true, DefaultValue = 20)]
-        public int MaxDBSize
+        [ConfigurationProperty("maxDbSize", IsRequired = true, DefaultValue = 20L)]
+        public long MaxDBSize
         {
             get
             {
-                return (int)base[propertyMaxDbSize];
+                return (long)base[propertyMaxDbSize];
             }
 
             set
@@ -350,12 +406,12 @@ namespace Uhuru.Configuration.Service
         /// <summary>
         /// Gets or sets the amount of available storage for this service, in megabytes.
         /// </summary>
-        [ConfigurationProperty("availableStorage", IsRequired = true, DefaultValue = 1024)]
-        public int AvailableStorage
+        [ConfigurationProperty("availableStorage", IsRequired = true, DefaultValue = 1024L)]
+        public long AvailableStorage
         {
             get
             {
-                return (int)base[propertyAvailableStorage];
+                return (long)base[propertyAvailableStorage];
             }
 
             set

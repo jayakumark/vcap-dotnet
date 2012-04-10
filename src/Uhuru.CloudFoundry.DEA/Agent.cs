@@ -182,7 +182,8 @@ namespace Uhuru.CloudFoundry.DEA
                 this.stager.Runtimes.Add(deaConf.Name, dea);
             }
 
-            this.stager.DropletDir = UhuruSection.GetSection().DEA.BaseDir;
+            string baseDir = UhuruSection.GetSection().DEA.BaseDir;
+            this.stager.DropletDir = new DirectoryInfo(baseDir).FullName;
 
             this.stager.DisableDirCleanup = UhuruSection.GetSection().DEA.DisableDirCleanup;
             this.multiTenant = UhuruSection.GetSection().DEA.Multitenant;
@@ -192,6 +193,12 @@ namespace Uhuru.CloudFoundry.DEA
             this.monitoring.MaxMemoryMbytes = UhuruSection.GetSection().DEA.MaxMemory;
 
             this.fileViewer.Port = UhuruSection.GetSection().DEA.FilerPort;
+            
+            // Replace the ephemeral monitoring port with the configured one
+            if (UhuruSection.GetSection().DEA.StatusPort > 0)
+            {
+                this.Port = UhuruSection.GetSection().DEA.StatusPort;
+            }
 
             this.stager.ForceHttpFileSharing = UhuruSection.GetSection().DEA.ForceHttpSharing;
 
@@ -282,28 +289,14 @@ namespace Uhuru.CloudFoundry.DEA
                 Monitoring.MonitorIntervalMilliseconds,
                 delegate
                 {
-                    try
-                    {
-                        this.MonitorApps();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(Strings.MonitorException, ex.ToString());
-                    }
+                    this.MonitorApps();
                 });
 
             TimerHelper.RecurringLongCall(
                 500,
                 delegate
                 {
-                    try
-                    {
                         this.InstanceProcessMonitor();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(Strings.MonitorException, ex.ToString());
-                    }
                 });
 
             TimerHelper.RecurringLongCall(
@@ -483,7 +476,7 @@ namespace Uhuru.CloudFoundry.DEA
             Thread.Sleep(100);
 
             this.fileViewer.Stop();
-            this.deaReactor.NatsClient.Stop();
+            this.deaReactor.NatsClient.Close();
             this.TheReaper();
             this.droplets.ScheduleSnapshotAppState();
             Logger.Info(Strings.ByeMessage);
@@ -645,9 +638,6 @@ namespace Uhuru.CloudFoundry.DEA
         /// <param name="args">The <see cref="Uhuru.NatsClient.ReactorErrorEventArgs"/> instance containing the error data.</param>
         private void NatsErrorHandler(object sender, ReactorErrorEventArgs args)
         {
-            string errorThrown = args.Message == null ? string.Empty : args.Message;
-            Logger.Error(Strings.ExitingNatsError, errorThrown);
-
             // Only snapshot app state if we had a chance to recover saved state. This prevents a connect error
             // that occurs before we can recover state from blowing existing data away.
             if (this.droplets.RecoveredDroplets)
@@ -655,7 +645,9 @@ namespace Uhuru.CloudFoundry.DEA
                 this.droplets.SnapshotAppState();
             }
 
-            throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture, Strings.NatsError, errorThrown));
+            string errorThrown = args.Message == null ? string.Empty : args.Message;
+            Logger.Fatal(Strings.ExitingNatsError, errorThrown);
+            Environment.FailFast(string.Format(CultureInfo.InvariantCulture, Strings.NatsError, errorThrown), args.Exception);
         }
 
         /// <summary>
@@ -670,15 +662,18 @@ namespace Uhuru.CloudFoundry.DEA
         /// <summary>
         /// Snapshots the varz with basic resource information.
         /// </summary>
-        private void SnapshotVarz()
+        private new void SnapshotVarz()
         {
             try
             {
                 VarzLock.EnterWriteLock();
+
+                base.SnapshotVarz();
+
                 Varz["apps_max_memory"] = this.monitoring.MaxMemoryMbytes;
                 Varz["apps_reserved_memory"] = this.monitoring.MemoryReservedMbytes;
                 Varz["apps_used_memory"] = this.monitoring.MemoryUsageKbytes / 1024;
-                Varz["num_apps"] = this.monitoring.MaxClients;
+                Varz["num_apps"] = this.monitoring.Clients;
                 if (this.shuttingDown)
                 {
                     Varz["state"] = "SHUTTING_DOWN";
@@ -1476,12 +1471,11 @@ namespace Uhuru.CloudFoundry.DEA
             long memoryUsageKbytes = 0;
             List<object> runningApps = new List<object>();
 
-            if (this.droplets.NoMonitorableApps())
-            {
-                this.monitoring.MemoryUsageKbytes = 0;
-                return;
-            }
-
+            // if (this.droplets.NoMonitorableApps())
+            // {
+            //    this.monitoring.MemoryUsageKbytes = 0;
+            //    return;
+            // }
             DateTime monitorStart = DateTime.Now;
             DateTime diskUsageStart = DateTime.Now;
 
@@ -1528,12 +1522,19 @@ namespace Uhuru.CloudFoundry.DEA
                             DateTime currentTicksTimestamp = DateTime.Now;
 
                             long lastTicks = instance.Usage.Count >= 1 ? instance.Usage[instance.Usage.Count - 1].TotalProcessTicks : 0;
-                            DateTime lastTickTimestamp = instance.Usage.Count >= 1 ? instance.Usage[instance.Usage.Count - 1].Time : currentTicksTimestamp;
-
+                            
                             long ticksDelta = currentTicks - lastTicks;
-                            long tickTimespan = (currentTicksTimestamp - lastTickTimestamp).Ticks;
 
-                            float cpu = tickTimespan != 0 ? ((float)ticksDelta / tickTimespan) * 100 / Environment.ProcessorCount : 0;
+                            // this is the case when the cpu utilization is reported between the last sample timestamp and now
+                            // DateTime lastTickTimestamp = instance.Usage.Count >= 1 ? instance.Usage[instance.Usage.Count - 1].Time : currentTicksTimestamp;
+                            // long tickTimespan = (currentTicksTimestamp - lastTickTimestamp).Ticks;
+
+                            // this is the case when the cpu utilization is reported as the total life of the app
+                            long tickTimespan = (currentTicksTimestamp - instance.Properties.Start).Ticks;
+
+                            float cpu = tickTimespan != 0 ? ((float)ticksDelta / tickTimespan) * 100 : 0;
+
+                            // trim it to one decimal precision
                             cpu = float.Parse(cpu.ToString("F1", CultureInfo.CurrentCulture), CultureInfo.CurrentCulture);
 
                             long memBytes = instance.JobObject.WorkingSetMemory;
@@ -1603,6 +1604,8 @@ namespace Uhuru.CloudFoundry.DEA
                         instance.Lock.ExitWriteLock();
                     }
                 });
+
+            this.monitoring.MemoryUsageKbytes = memoryUsageKbytes;
 
             // export running app information to varz
             try
@@ -1727,10 +1730,10 @@ namespace Uhuru.CloudFoundry.DEA
                         // Remove the instance system resources, except the instance directory
                         if (isCrashed || isOldCrash || isStopped || isDeleted)
                         {
-                            Logger.Debug(Strings.CrashesReaperDeleted, instance.Properties.InstanceId);
-
                             if (instance.Plugin != null)
                             {
+                                Logger.Debug(Strings.CrashesReaperDeleted, instance.Properties.InstanceId);
+
                                 try
                                 {
                                     this.monitoring.RemoveInstanceResources(instance);

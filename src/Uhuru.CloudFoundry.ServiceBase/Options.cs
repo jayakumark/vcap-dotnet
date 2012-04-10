@@ -33,6 +33,15 @@ namespace Uhuru.CloudFoundry.ServiceBase
         }
 
         /// <summary>
+        /// Gets or sets the Node plan.
+        /// </summary>
+        public string Plan
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// Gets or sets the network file system used for migrating provisioned services.
         /// </summary>
         public string MigrationNFS
@@ -85,7 +94,7 @@ namespace Uhuru.CloudFoundry.ServiceBase
         /// <summary>
         /// Gets or sets the maximum database size for a provisioned service.
         /// </summary>
-        public int MaxDBSize
+        public long MaxDBSize
         {
             get;
             set;
@@ -121,7 +130,7 @@ namespace Uhuru.CloudFoundry.ServiceBase
         /// <summary>
         /// Gets or sets the maximum available storage for the service.
         /// </summary>
-        public int AvailableStorage
+        public long AvailableStorage
         {
             get;
             set;
@@ -146,6 +155,18 @@ namespace Uhuru.CloudFoundry.ServiceBase
         { 
             get; 
             set; 
+        }
+
+        /// <summary>
+        /// Gets or sets the port for the /healthz and /varz monitoring http endpoint.
+        /// </summary>
+        /// <value>
+        /// The status port. Value 0 or less is used to get an ephemeral port.
+        /// </value>
+        public int StatusPort
+        {
+            get;
+            set;
         }
     }
 }

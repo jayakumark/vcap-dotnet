@@ -53,6 +53,7 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>lib\Newtonsoft.Json.dll</HintPath>
     </Reference>
+    <Reference Include="SevenZipSharp, Version=0.64.3890.29348, Culture=neutral, PublicKeyToken=20de82c62b055c88, processorArchitecture=MSIL" />
     <Reference Include="System">
       <Private>False</Private>
     </Reference>
@@ -81,10 +82,7 @@
     <Reference Include="TestDLLToLoad, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>lib\TestDLLToLoad.dll</HintPath>
     </Reference>
-    <Reference Include="Uhuru.CloudFoundry.Cloud, Version=1.0.0.0, Culture=neutral, PublicKeyToken=0f4990e2a96bb020, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>lib\Uhuru.CloudFoundry.Cloud.dll</HintPath>
-    </Reference>
+    <Reference Include="Uhuru.CloudFoundry.Cloud, Version=0.9.0.0, Culture=neutral, PublicKeyToken=0f4990e2a96bb020, processorArchitecture=MSIL" />
   </ItemGroup>
   <ItemGroup>
     <CodeAnalysisDependentAssemblyPaths Condition=" '$(VS100COMNTOOLS)' != '' " Include="$(VS100COMNTOOLS)..\IDE\PrivateAssemblies">
@@ -97,11 +95,13 @@
     <Compile Include="Performance\CloudTestAppParallelTest.cs" />
     <Compile Include="Performance\UmbracoParallelTest.cs" />
     <Compile Include="Performance\WcfHttpTunnelParallelTest.cs" />
+    <Compile Include="Unit\PluginHostTest.cs" />
     <Compile Include="System\CloudTestAppTest.cs" />
     <Compile Include="System\DifferentDotNetVersionTest.cs" />
     <Compile Include="System\MongoTestAppTest.cs" />
     <Compile Include="System\MvcTest.cs" />
     <Compile Include="System\RedisTestAppTest.cs" />
+    <Compile Include="System\Tests.cs" />
     <Compile Include="Unit\HttpTunnelTest.cs" />
     <Compile Include="Unit\DiskUsageTest.cs" />
     <Compile Include="Integration\ConfigurationTest.cs" />
@@ -141,10 +141,6 @@
     <ProjectReference Include="..\Uhuru.NatsClient\Uhuru.NatsClient.csproj">
       <Project>{BF174398-E394-4730-A6E0-B07A27C6CEF4}</Project>
       <Name>Uhuru.NatsClient</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Uhuru.Utilities.Json\Uhuru.Utilities.Json.csproj">
-      <Project>{9A303BC0-891C-4C58-B3F4-BC7423ECA52E}</Project>
-      <Name>Uhuru.Utilities.Json</Name>
     </ProjectReference>
     <ProjectReference Include="..\Uhuru.Utilities\Uhuru.Utilities.csproj">
       <Project>{CD3B15D7-8C7D-4302-A621-02BFD96FE6E3}</Project>

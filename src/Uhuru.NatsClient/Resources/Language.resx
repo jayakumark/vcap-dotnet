@@ -117,6 +117,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="AttemptingReconnect" xml:space="preserve">
+    <value>Attempting to reconnect to the NATS server.</value>
+  </data>
+  <data name="CallbackException" xml:space="preserve">
+    <value>Unhandled exception in the callback.</value>
+  </data>
   <data name="ERRCanNotConnect" xml:space="preserve">
     <value>Cannot connect to server</value>
   </data>
@@ -137,5 +143,14 @@
   </data>
   <data name="ExceptionSocketReadProblem" xml:space="preserve">
     <value>There was a problem reading from the socket.\r\n</value>
+  </data>
+  <data name="ReadTCPDataException" xml:space="preserve">
+    <value>NATS ReadTCPData failed.</value>
+  </data>
+  <data name="SendDataFailed" xml:space="preserve">
+    <value>NATS SendData failed: {0}</value>
+  </data>
+  <data name="UnableToReconnect" xml:space="preserve">
+    <value>Unable to reconnect to NATS server.</value>
   </data>
 </root>

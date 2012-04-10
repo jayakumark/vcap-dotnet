@@ -8,6 +8,7 @@ namespace Uhuru.CloudFoundry.ServiceBase
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Globalization;
     using Uhuru.NatsClient;
     using Uhuru.Utilities;
@@ -59,6 +60,18 @@ namespace Uhuru.CloudFoundry.ServiceBase
         }
 
         /// <summary>
+        /// Gets or sets the cpu performance.
+        /// </summary>
+        /// <value>
+        /// The cpu performance.
+        /// </value>
+        protected PerformanceCounter CpuPerformance
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// Registers a component using the specified options.
         /// </summary>
         /// <param name="options">The options for the component.</param>
@@ -80,15 +93,22 @@ namespace Uhuru.CloudFoundry.ServiceBase
             }
 
             string host = options["host"].ToString();
-            int port = NetworkInterface.GrabEphemeralPort();
+
+            int port = options.ContainsKey("statusPort") ? (int)options["statusPort"] : 0;
+            if (port < 1)
+            {
+                port = NetworkInterface.GrabEphemeralPort();
+            }
 
             Reactor nats = (Reactor)options["nats"];
 
-            string[] auth = new string[] 
-            { 
-                options.ContainsKey("user") ? options["user"].ToString() : string.Empty, 
-                options.ContainsKey("password") ? options["password"].ToString() : string.Empty
-            };
+            //// string[] auth = new string[] 
+            //// { 
+            ////     options.ContainsKey("user") ? options["user"].ToString() : string.Empty, 
+            ////     options.ContainsKey("password") ? options["password"].ToString() : string.Empty
+            //// };
+
+            string[] auth = new string[] { Credentials.GenerateCredential(32), Credentials.GenerateCredential(32) };
 
             // Discover message limited
             this.discover = new Dictionary<string, object>() 
@@ -109,6 +129,20 @@ namespace Uhuru.CloudFoundry.ServiceBase
             }
 
             this.Varz["num_cores"] = Environment.ProcessorCount;
+
+            // todo: change this to a more accurate method
+            // consider:
+            // PerformanceCounter upTime = new PerformanceCounter("System", "System Up Time");
+            // upTime.NextValue();
+            // TimeSpan ts2 = TimeSpan.FromSeconds(upTime.NextValue());
+            // Console.WriteLine("{0}d {1}h {2}m {3}s", ts2.Days, ts2.Hours, ts2.Minutes, ts2.Seconds);
+            this.Varz["system_start"] = RubyCompatibility.DateTimeToRubyString(DateTime.Now.AddMilliseconds(-Environment.TickCount));
+
+            this.CpuPerformance = new PerformanceCounter();
+            this.CpuPerformance.CategoryName = "Processor Information";
+            this.CpuPerformance.CounterName = "% Processor Time";
+            this.CpuPerformance.InstanceName = "_Total";
+            this.CpuPerformance.NextValue();
 
             this.Healthz = "ok\n";
 
@@ -157,8 +191,39 @@ namespace Uhuru.CloudFoundry.ServiceBase
         /// </summary>
         private void UpdateDiscoverUptime()
         {
-            TimeSpan span = DateTime.Now - (DateTime)this.discover["start"];
+            TimeSpan span = DateTime.Now - RubyCompatibility.DateTimeFromRubyString((string)this.discover["start"]);
             this.discover["uptime"] = string.Format(CultureInfo.InvariantCulture, "{0}d:{1}h:{2}m:{3}s", span.Days, span.Hours, span.Minutes, span.Seconds);
+        }
+
+        /// <summary>
+        /// Updates the varz structure with uptime, cpu, memory usage ....
+        /// </summary>
+        private void UpdateVarz()
+        {
+            TimeSpan span = DateTime.Now - RubyCompatibility.DateTimeFromRubyString((string)this.discover["start"]);
+            this.Varz["uptime"] = string.Format(CultureInfo.InvariantCulture, "{0}d:{1}h:{2}m:{3}s", span.Days, span.Hours, span.Minutes, span.Seconds);
+
+            float cpu = ((float)Process.GetCurrentProcess().TotalProcessorTime.Ticks / span.Ticks) * 100;
+
+            // trim it to one decimal precision
+            cpu = float.Parse(cpu.ToString("F1", CultureInfo.CurrentCulture), CultureInfo.CurrentCulture);
+
+            this.Varz["cpu"] = cpu;
+            this.Varz["mem"] = Process.GetCurrentProcess().WorkingSet64 / 1024;
+
+            // extra uhuru information
+            this.Varz["cpu_time"] = Process.GetCurrentProcess().TotalProcessorTime;
+
+            // this is the cpu percentage for the time span between the Nextvalue calls;
+            this.Varz["system_cpu"] = this.CpuPerformance.NextValue();
+            this.Varz["system_cpu_ticks"] = this.CpuPerformance.RawValue;
+
+            // todo: add memory usage here
+            // consider:
+            // PerformanceCounter ramCounter;
+            // ramCounter = new PerformanceCounter("Memory", "Available MBytes");
+            // ramCounter.NextValue();
+            this.Varz["system_mem"] = null;
         }
 
         /// <summary>
@@ -172,7 +237,19 @@ namespace Uhuru.CloudFoundry.ServiceBase
             // TODO: vladi: port this again, this will most likely not work
             this.httpMonitoringServer = new MonitoringServer(port, host, auth[0], auth[1]);
             this.httpMonitoringServer.HealthzRequested += new EventHandler<HealthzRequestEventArgs>(this.HttpMonitoringServer_HealthzRequested);
+            this.httpMonitoringServer.VarzRequested += new EventHandler<VarzRequestEventArgs>(this.HttpMonitoringServer_VarzRequested);
             this.httpMonitoringServer.Start();
+        }
+
+        /// <summary>
+        /// Handles the VarzRequested event of the httpMonitoringServer control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="Uhuru.Utilities.VarzRequestEventArgs"/> instance containing the event data.</param>
+        private void HttpMonitoringServer_VarzRequested(object sender, VarzRequestEventArgs e)
+        {
+            this.UpdateVarz();
+            e.VarzMessage = JsonConvertibleObject.SerializeToJson(this.Varz);
         }
 
         /// <summary>

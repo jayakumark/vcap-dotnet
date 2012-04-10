@@ -8,6 +8,7 @@ namespace Uhuru.CloudFoundry.DEA
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Globalization;
     using System.Threading;
     using Uhuru.Configuration;
@@ -25,7 +26,7 @@ namespace Uhuru.CloudFoundry.DEA
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2214:DoNotCallOverridableMethodsInConstructors", Justification = "No easy way to get around this without a lot of refactoring.")]
         public VCAPComponent()
         {
-            this.VarzLock = new ReaderWriterLockSlim();
+            this.VarzLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
             this.Varz = new Dictionary<string, object>();
             this.Discover = new Dictionary<string, object>();
 
@@ -45,7 +46,7 @@ namespace Uhuru.CloudFoundry.DEA
             // http server port
             this.Port = NetworkInterface.GrabEphemeralPort();
 
-            this.Authentication = new string[] { Credentials.GenerateCredential(), Credentials.GenerateCredential() };
+            this.Authentication = new string[] { Credentials.GenerateCredential(32), Credentials.GenerateCredential(32) };
         }
 
         /// <summary>
@@ -166,10 +167,29 @@ namespace Uhuru.CloudFoundry.DEA
         }
 
         /// <summary>
+        /// Gets or sets the cpu performance.
+        /// </summary>
+        /// <value>
+        /// The cpu performance.
+        /// </value>
+        protected PerformanceCounter CpuPerformance
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// Runs this the VCAP component. This method is non-blocking.
         /// </summary>
         public virtual void Run()
         {
+            // Listen for discovery requests
+            VCAPReactor.OnComponentDiscover += delegate(string msg, string reply, string subject)
+            {
+                this.UpdateDiscoverUptime();
+                VCAPReactor.SendReply(reply, JsonConvertibleObject.SerializeToJson(this.Discover));
+            };
+
             VCAPReactor.Start();
 
             this.Discover = new Dictionary<string, object>() 
@@ -191,14 +211,21 @@ namespace Uhuru.CloudFoundry.DEA
 
             this.Varz["num_cores"] = Environment.ProcessorCount;
 
-            this.Healthz = "ok\n";
+            // todo: change this to a more accurate method
+            // consider:
+            // PerformanceCounter upTime = new PerformanceCounter("System", "System Up Time");
+            // upTime.NextValue();
+            // TimeSpan ts2 = TimeSpan.FromSeconds(upTime.NextValue());
+            // Console.WriteLine("{0}d {1}h {2}m {3}s", ts2.Days, ts2.Hours, ts2.Minutes, ts2.Seconds);
+            this.Varz["system_start"] = RubyCompatibility.DateTimeToRubyString(DateTime.Now.AddMilliseconds(-Environment.TickCount));
 
-            // Listen for discovery requests
-            VCAPReactor.OnComponentDiscover += delegate(string msg, string reply, string subject)
-            {
-                this.UpdateDiscoverUptime();
-                VCAPReactor.SendReply(reply, JsonConvertibleObject.SerializeToJson(this.Discover));
-            };
+            this.CpuPerformance = new PerformanceCounter();
+            this.CpuPerformance.CategoryName = "Processor Information";
+            this.CpuPerformance.CounterName = "% Processor Time";
+            this.CpuPerformance.InstanceName = "_Total";
+            this.CpuPerformance.NextValue();
+
+            this.Healthz = "ok\n";
 
             this.StartHttpServer();
 
@@ -221,7 +248,7 @@ namespace Uhuru.CloudFoundry.DEA
         /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing)
+            if (disposing && MonitoringServer != null)
             {
                 MonitoringServer.Dispose();
             }
@@ -235,6 +262,46 @@ namespace Uhuru.CloudFoundry.DEA
             if (VCAPReactor == null)
             {
                 VCAPReactor = new VCAPReactor();
+            }
+        }
+
+        /// <summary>
+        /// Updates the varz structure with uptime, cpu, memory usage ....
+        /// </summary>
+        protected void SnapshotVarz()
+        {
+            try
+            {
+                this.VarzLock.EnterWriteLock();
+
+                TimeSpan span = DateTime.Now - this.StartedAt;
+                this.Varz["uptime"] = string.Format(CultureInfo.InvariantCulture, Strings.DaysHoursMinutesSecondsDateTimeFormat, span.Days, span.Hours, span.Minutes, span.Seconds);
+
+                float cpu = ((float)Process.GetCurrentProcess().TotalProcessorTime.Ticks / span.Ticks) * 100;
+
+                // trim it to one decimal precision
+                cpu = float.Parse(cpu.ToString("F1", CultureInfo.CurrentCulture), CultureInfo.CurrentCulture);
+
+                this.Varz["cpu"] = cpu;
+                this.Varz["mem"] = Process.GetCurrentProcess().WorkingSet64 / 1024;
+
+                // extra uhuru information
+                this.Varz["cpu_time"] = Process.GetCurrentProcess().TotalProcessorTime;
+
+                // this is the cpu percentage for the time span between the Nextvalue calls;
+                this.Varz["system_cpu"] = this.CpuPerformance.NextValue();
+                this.Varz["system_cpu_ticks"] = this.CpuPerformance.RawValue;
+
+                // todo: add memory usage here
+                // consider:
+                // PerformanceCounter ramCounter;
+                // ramCounter = new PerformanceCounter("Memory", "Available MBytes");
+                // ramCounter.NextValue();
+                this.Varz["system_mem"] = null;
+            }
+            finally
+            {
+                this.VarzLock.ExitWriteLock();
             }
         }
 
@@ -258,12 +325,12 @@ namespace Uhuru.CloudFoundry.DEA
             {
                 try
                 {
-                    this.VarzLock.ExitWriteLock();
+                    this.VarzLock.EnterWriteLock();
                     response.VarzMessage = JsonConvertibleObject.SerializeToJson(this.Varz);
                 }
                 finally
                 {
-                    this.VarzLock.ExitReadLock();
+                    this.VarzLock.ExitWriteLock();
                 }
             };
 

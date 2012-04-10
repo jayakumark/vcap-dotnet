@@ -47,7 +47,7 @@ namespace Uhuru.NatsClient
     /// This class is the NATS client, it is used to communicate to the NATS server.
     /// The reactor enables pub/sub style communication.
     /// </summary>
-    public sealed class Reactor : IDisposable
+    public sealed class Reactor : IReactor
     {
         /// <summary>
         /// Used for creating OnMessage tasks.
@@ -137,7 +137,7 @@ namespace Uhuru.NatsClient
         /// <summary>
         /// Time to wait between attempts
         /// </summary>
-        private int reconnectTime = 10000;
+        private int reconnectTime = 2000;
 
         /// <summary>
         /// Locker for the publish method
@@ -158,6 +158,13 @@ namespace Uhuru.NatsClient
         /// the current reply
         /// </summary>
         private string reply;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Reactor"/> class.
+        /// </summary>
+        public Reactor()
+        {
+        }
 
         /// <summary>
         /// an event raised on connection
@@ -455,7 +462,7 @@ namespace Uhuru.NatsClient
         /// <summary>
         /// Close the client connection. 
         /// </summary>
-        public void Stop()
+        public void Close()
         {
             this.Status = ConnectionStatus.Closing;
             this.CloseConnection();
@@ -511,6 +518,8 @@ namespace Uhuru.NatsClient
         /// </summary>
         public void AttemptReconnect()
         {
+            Logger.Warning(Language.AttemptingReconnect);
+
             int reconnectAttempt = 0;
             while (reconnectAttempt < this.reconnectAttempts)
             {
@@ -521,9 +530,9 @@ namespace Uhuru.NatsClient
                     this.status = ConnectionStatus.Open;
                     break;
                 }
-                catch (SocketException soketException)
+                catch (SocketException)
                 {
-                    Logger.Fatal(soketException.ToString());
+                    // Logger.Fatal(soketException.ToString());
                 }
 
                 reconnectAttempt++;
@@ -533,7 +542,9 @@ namespace Uhuru.NatsClient
             if (this.status == ConnectionStatus.Reconnecting)
             {
                 this.status = ConnectionStatus.Closed;
-                throw new ReactorException(this.serverUri, Resources.Language.ERRCanNotConnect);
+
+                //// throw new ReactorException(this.serverUri, Resources.Language.ERRCanNotConnect);
+                this.OnError(this, new ReactorErrorEventArgs(Language.UnableToReconnect, new ReactorException(this.serverUri, Resources.Language.ERRCanNotConnect)));
             }
             else
             {
@@ -701,29 +712,16 @@ namespace Uhuru.NatsClient
                     ((NetworkStream)result.AsyncState).BeginRead(this.readBuffer, 0, this.readBuffer.Length, this.ReadTCPData, ((NetworkStream)result.AsyncState));
                 }
             }
-            catch (ArgumentNullException argumentNullException)
+            catch (IOException ex)
             {
-                Logger.Fatal(Language.ExceptionMessageBufferParameterNull + argumentNullException.ToString());
-            }
-            catch (ArgumentOutOfRangeException argumentOutOfRangeException)
-            {
-                Logger.Fatal(Language.ExceptionBufferOffsetOrSizeIncorrect + argumentOutOfRangeException.ToString());
-            }
-            catch (ArgumentException argumentException)
-            {
-                Logger.Fatal(Language.ExceptionAsyncResultParameterNull + argumentException.ToString());
-            }
-            catch (IOException exception)
-            {
-                Logger.Fatal(Language.ExceptionSocketReadProblem + exception.ToString());
-            }
-            catch (ObjectDisposedException objectDisposedException)
-            {
-                Logger.Fatal(Language.ExceptionNetworkStreamClosed + objectDisposedException.ToString());
+                Logger.Warning(Language.ExceptionSocketReadProblem + ex.ToString());
+                this.OnError(this, new ReactorErrorEventArgs(Language.ReadTCPDataException, ex));
+                //// todo: uncomment this if reconnect is working properly
+                //// this.AttemptReconnect();
             }
             catch (Exception ex)
             {
-                Logger.Fatal(ex.ToString());
+                this.OnError(this, new ReactorErrorEventArgs(Language.ReadTCPDataException, ex));
             }
         }
 
@@ -741,9 +739,11 @@ namespace Uhuru.NatsClient
             }
             catch (System.IO.IOException exception)
             {
-                EventLog.WriteEntry(Resources.ClientConnection.EventSource, exception.ToString(), EventLogEntryType.Error);
+                Logger.Warning(Language.SendDataFailed, exception.ToString());
                 this.status = ConnectionStatus.Reconnecting;
-                this.AttemptReconnect();
+                this.OnError(this, new ReactorErrorEventArgs(Language.SendDataFailed, exception));
+                //// todo: refoact after reconnecting is working
+                //// this.AttemptReconnect();
             }
         }
 
@@ -752,6 +752,7 @@ namespace Uhuru.NatsClient
         /// </summary>
         /// <param name="data">The data.</param>
         /// <param name="bytesRead">The bytes read.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes", Justification = "To catch all exceptions in the callback.")]
         private void ReceiveData(byte[] data, int bytesRead)
         {
             if (this.buf == null)
@@ -802,7 +803,18 @@ namespace Uhuru.NatsClient
                                 if (this.pongs.Count > 0)
                                 {
                                     SimpleCallback callback = this.pongs.Dequeue();
-                                    callback();
+
+                                    try
+                                    {
+                                        callback();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        if (this.OnError != null)
+                                        {
+                                            this.OnError(this, new ReactorErrorEventArgs(Language.CallbackException, ex));
+                                        }
+                                    }
                                 }
 
                                 strBuffer = this.resource.PONG.Replace(strBuffer, string.Empty);
@@ -872,6 +884,7 @@ namespace Uhuru.NatsClient
         /// <param name="sid">The subscription ID.</param>
         /// <param name="replyMessage">The reply message.</param>
         /// <param name="msg">The message.</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes", Justification = "Catches all exceptions from the callback.")]
         private void OnMessage(int sid, string replyMessage, string msg)
         {
             if (!this.subscriptions.ContainsKey(sid))
@@ -899,7 +912,17 @@ namespace Uhuru.NatsClient
                                 return;
                             }
 
-                            nantsSubscription.Callback(msg, replyMessage, nantsSubscription.Subject);
+                            try
+                            {
+                                nantsSubscription.Callback(msg, replyMessage, nantsSubscription.Subject);
+                            }
+                            catch (Exception ex)
+                            {
+                                if (this.OnError != null)
+                                {
+                                    this.OnError(this, new ReactorErrorEventArgs(Language.CallbackException, ex));
+                                }
+                            }
                         });
             }
 

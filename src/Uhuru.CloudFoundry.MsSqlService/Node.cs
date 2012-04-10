@@ -43,7 +43,7 @@ namespace Uhuru.CloudFoundry.MSSqlService
         /// <summary>
         /// The maximum database size, in bytes.
         /// </summary>
-        private int maxDbSize;
+        private long maxDbSize;
 
         /// <summary>
         /// The maximum duration for a query.
@@ -68,12 +68,12 @@ namespace Uhuru.CloudFoundry.MSSqlService
         /// <summary>
         /// Current available storage on the node.
         /// </summary>
-        private int availableStorage;
+        private long availableStorageBytes;
 
         /// <summary>
         /// Maximum storage on the node.
         /// </summary>
-        private int nodeCapacity;
+        private long nodeCapacityBytes;
         
         /// <summary>
         /// Number of queries served by the node.
@@ -118,7 +118,7 @@ namespace Uhuru.CloudFoundry.MSSqlService
             get
             {
                 Announcement a = new Announcement();
-                a.AvailableStorage = this.availableStorage;
+                a.AvailableStorageBytes = this.availableStorageBytes;
                 return a;
             }
         }
@@ -222,12 +222,12 @@ namespace Uhuru.CloudFoundry.MSSqlService
 
             this.CheckDBConsistency();
 
-            this.availableStorage = options.AvailableStorage * 1024 * 1024;
-            this.nodeCapacity = this.availableStorage;
+            this.availableStorageBytes = options.AvailableStorage * 1024 * 1024;
+            this.nodeCapacityBytes = this.availableStorageBytes;
 
             foreach (ProvisionedService provisioned_service in ProvisionedService.GetInstances())
             {
-                this.availableStorage -= this.StorageForService(provisioned_service);
+                this.availableStorageBytes -= this.StorageForService(provisioned_service);
             }
 
             this.queriesServed = 0;
@@ -291,11 +291,11 @@ namespace Uhuru.CloudFoundry.MSSqlService
         /// <param name="provisionedCredential">The provisioned credential.</param>
         /// <param name="bindingCredentials">The binding credentials.</param>
         /// <param name="filePath">The file path from which to import the service.</param>
-        /// <param name="plan">The payment plan.</param>
+        /// <param name="planRequest">The payment plan.</param>
         /// <returns>
         /// A bool indicating whether the request was successful.
         /// </returns>
-        protected override bool ImportInstance(ServiceCredentials provisionedCredential, ServiceCredentials bindingCredentials, string filePath, ProvisionedServicePlanType plan)
+        protected override bool ImportInstance(ServiceCredentials provisionedCredential, ServiceCredentials bindingCredentials, string filePath, ProvisionedServicePlanType planRequest)
         {
             // todo: vladi: Replace with code for odbc object for SQL Server
             return false;
@@ -339,9 +339,9 @@ namespace Uhuru.CloudFoundry.MSSqlService
                 varz["database_status"] = status;
                 
                 // node capacity
-                varz["node_storage_capacity"] = this.nodeCapacity;
+                varz["node_storage_capacity"] = this.nodeCapacityBytes;
                 
-                varz["node_storage_used"] = this.nodeCapacity - this.availableStorage;
+                varz["node_storage_used"] = this.nodeCapacityBytes - this.availableStorageBytes;
                 
                 // how many long queries and long txs are killed.
                 varz["long_queries_killed"] = this.longQueriesKilled;
@@ -420,25 +420,26 @@ namespace Uhuru.CloudFoundry.MSSqlService
         /// <summary>
         /// Provisions an MS Sql Server database.
         /// </summary>
-        /// <param name="plan">The payment plan for the service.</param>
+        /// <param name="planRequest">The payment plan for the service.</param>
         /// <returns>
         /// Credentials for the provisioned service.
         /// </returns>
-        protected override ServiceCredentials Provision(ProvisionedServicePlanType plan)
+        protected override ServiceCredentials Provision(ProvisionedServicePlanType planRequest)
         {
-            return Provision(plan, null);
+            return Provision(planRequest, null);
         }
 
         /// <summary>
         /// Provisions an MS Sql Server database.
         /// </summary>
-        /// <param name="plan">The payment plan for the service.</param>
+        /// <param name="planRequest">The payment plan for the service.</param>
         /// <param name="credentials">Existing credentials for the service.</param>
         /// <returns>
         /// Credentials for the provisioned service.
         /// </returns>
-        protected override ServiceCredentials Provision(ProvisionedServicePlanType plan, ServiceCredentials credentials)
+        protected override ServiceCredentials Provision(ProvisionedServicePlanType planRequest, ServiceCredentials credentials)
         {
+            //// todo: chek for plan
             ProvisionedService provisioned_service = new ProvisionedService();
             if (credentials == null)
             {
@@ -453,7 +454,7 @@ namespace Uhuru.CloudFoundry.MSSqlService
                 provisioned_service.Name = name;
                 provisioned_service.User = user;
                 provisioned_service.Password = password;
-                provisioned_service.Plan = plan;
+                provisioned_service.Plan = planRequest;
 
                 this.CreateDatabase(provisioned_service);
 
@@ -531,8 +532,8 @@ namespace Uhuru.CloudFoundry.MSSqlService
             }
 
             this.DeleteDatabase(provisioned_service);
-            int storage = this.StorageForService(provisioned_service);
-            this.availableStorage += storage;
+            long storage = this.StorageForService(provisioned_service);
+            this.availableStorageBytes += storage;
 
             if (!provisioned_service.Destroy())
             {
@@ -665,8 +666,8 @@ namespace Uhuru.CloudFoundry.MSSqlService
         /// Returns storage capacity based on billing plan.
         /// </summary>
         /// <param name="provisionedService">The provisioned service.</param>
-        /// <returns>The storage quota in megabytes.</returns>
-        private int StorageForService(ProvisionedService provisionedService)
+        /// <returns>The storage quota in bytes.</returns>
+        private long StorageForService(ProvisionedService provisionedService)
         {
             switch (provisionedService.Plan)
             {
@@ -771,13 +772,13 @@ namespace Uhuru.CloudFoundry.MSSqlService
                 }
 
                 this.CreateDatabaseUser(name, user, password);
-                int storage = this.StorageForService(provisionedService);
-                if (this.availableStorage < storage)
+                long storage = this.StorageForService(provisionedService);
+                if (this.availableStorageBytes < storage)
                 {
                     throw new MSSqlErrorException(MSSqlErrorException.MSSqlDiskFull);
                 }
 
-                this.availableStorage -= storage;
+                this.availableStorageBytes -= storage;
                 Logger.Debug(Strings.SqlNodeDoneCreatingDBDebugMessage, provisionedService.SerializeToJson(), (start - DateTime.Now).TotalSeconds);
             }
             catch (Exception ex)
