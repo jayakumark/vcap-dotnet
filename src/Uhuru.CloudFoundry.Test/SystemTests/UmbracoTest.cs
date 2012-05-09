@@ -11,7 +11,7 @@ using Uhuru.CloudFoundry.Adaptor;
 using Uhuru.CloudFoundry.Adaptor.Objects;
 using Uhuru.CloudFoundry.Connection.JCO;
 
-namespace Uhuru.CloudFoundry.Test.System
+namespace Uhuru.CloudFoundry.Test.SystemTests
 {
     [TestClass]
     public class UmbracoTest
@@ -119,6 +119,8 @@ namespace Uhuru.CloudFoundry.Test.System
                 DeleteApp(pair.Key, pair.Value);
             }
 
+
+            Thread.Sleep(20000);
             foreach (KeyValuePair<string, string> pair in apps)
             {
                 bool exists = false;
