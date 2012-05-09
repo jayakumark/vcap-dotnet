@@ -40,6 +40,7 @@ namespace Uhuru.CloudFoundry.Test.Integration
                 target.mssqlConfig.Password = config.Service.MSSql.Password;
                 target.mssqlConfig.Port = config.Service.MSSql.Port;
                 target.mssqlConfig.LogicalStorageUnits = config.Service.MSSql.LogicalStorageUnits;
+                target.maxLongQuery = config.Service.MaxLengthyQuery;
 
                 target.connection = target.ConnectMSSql();
 
@@ -65,7 +66,7 @@ namespace Uhuru.CloudFoundry.Test.Integration
 
                 target.CreateDatabase(provisionedService);
 
-                target.connection.Close();
+                
 
                 Thread.Sleep(500);
 
@@ -164,14 +165,28 @@ namespace Uhuru.CloudFoundry.Test.Integration
                 {
                 }
 
-                sqlTest.Close();
+               
 
                 //////////////////////////////////////////////////////////////////////////
+                //Remove database
+                //////////////////////////////////////////////////////////////////////////
+                ServiceCredentials sc = new ServiceCredentials();
+                sc.UserName = provisionedService.User;
+                sc.Password = provisionedService.Password;
+                sc.Name = provisionedService.Name;
+                sc.User = provisionedService.User;
+                target.DeleteDatabase(provisionedService);
+                //target.Unprovision(provisionedService.Name, new ServiceCredentials[] { sc });
+                
+                sqlTest.Close();
+                target.connection.Close();
             }
             catch (System.Exception ex)
             {
                 Assert.Fail(ex.Message);
             }
         }
+
+      
     }
 }
